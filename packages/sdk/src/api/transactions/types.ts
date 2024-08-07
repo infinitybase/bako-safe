@@ -76,12 +76,22 @@ export interface ITransactionResume {
   error?: string;
 }
 
-export interface ITransactionSummary {
+export interface BaseSummary {
+  operations: Operation[];
+}
+
+export interface IConnectorSummary extends BaseSummary {
+  type: 'connector';
   origin: string;
   name: string;
   image?: string;
-  operations?: Operation[];
 }
+
+export interface ICliSummary extends BaseSummary {
+  type: 'cli';
+}
+
+export type ITransactionSummary = IConnectorSummary | ICliSummary;
 
 export enum TransactionType {
   TRANSACTION_SCRIPT = 'TRANSACTION_SCRIPT',
