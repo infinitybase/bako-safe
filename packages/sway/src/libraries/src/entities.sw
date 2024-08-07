@@ -4,22 +4,18 @@ use std::{
     b512::B512,
 };
 
-pub enum Signature {
-  webauth: WebAuthn,
-  fuelsig: FuelSignature,
+pub enum SignatureType {
+    WebAuthn: WebAuthnHeader,
+    Fuel: FuelHeader,
 }
 
-pub struct FuelSignature {
-  pub code: u64,
-  pub signature: B512,
+pub struct WebAuthnHeader {
+    pub signature: B512,
+    pub prefix_size: u64,
+    pub suffix_size: u64,
+    pub message_data_size: u64,
 }
 
-pub struct WebAuthn {
-  pub signature: B512,
-  pub prefix_size: u64,
-  pub suffix_size: u64,
-  pub auth_data_size: u64,
-  prefix: raw_slice,
-  suffix: raw_slice,
-  auth_data: raw_slice,
+pub struct FuelHeader {
+    pub signature: B512,
 }

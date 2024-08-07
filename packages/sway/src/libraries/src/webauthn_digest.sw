@@ -5,54 +5,63 @@ use std::{
   b512::B512,
   bytes::Bytes,
   hash::*,
+  alloc::alloc,
 };
 
 use ::entities::{
-  WebAuthn
+  WebAuthnHeader,
+};
+
+use ::utilities::{
+  write_bytes,
 };
 
 /// Get the WebAuthn digest
 
 ///     - params:
 ///         - webauthn: the WebAuthn struct
-///         - sig_ptr: the pointer to the signature
-///         - tx_id: the transaction id
+///         - ptr_data: the pointer to the signature
+///         - tx_id_bytes: the transaction id
 
 ///     - process:
-///         - recreate the body of signed message
+///         - recreate the message signed by webauthn.io
+///         [https://webauthn.io/]
 
-///     - returns: the digest(message) and the signature
-pub fn get_webauthn_digest(webauthn: WebAuthn, sig_ptr: raw_ptr, tx_id: Bytes) -> b256 {
-  // enum + signature + prefix_size + suffix_size + auth_data_size
-  let offset_data = __size_of::<u64>() + __size_of::<B512>() + __size_of::<u64>() + __size_of::<u64>() + __size_of::<u64>();
-  let offset_data_ptr = sig_ptr.add::<u8>(offset_data);
+///     - returns: the digest(message)
+pub fn get_webauthn_digest(
+    webauthn: WebAuthnHeader,
+    ptr_data: raw_ptr,
+    tx_id_bytes: Bytes,
+) -> b256 {
+    let tx_id_size = __size_of::<B512>();
+    // Sizes
+    let size_payload: u64 = webauthn.prefix_size + tx_id_size + webauthn.suffix_size;
+    // Data ptr
+    let ptr_data_suffix = ptr_data.add_uint_offset(webauthn.prefix_size);
+    let ptr_data_msg = ptr_data_suffix.add_uint_offset(webauthn.suffix_size);
+    // Bytes ptr
+    let ptr_bytes = alloc::<u8>(size_payload + __size_of::<b256>());
+    let ptr_bytes_tx = ptr_bytes.add_uint_offset(webauthn.prefix_size);
+    let ptr_bytes_suffix = ptr_bytes_tx.add_uint_offset(tx_id_size);
+    let ptr_bytes_msg = ptr_bytes_suffix.add_uint_offset(webauthn.suffix_size);
+    let ptr_bytes_hash = ptr_bytes_msg.add_uint_offset(webauthn.message_data_size);
+    // Write bytes
+    write_bytes(ptr_bytes, ptr_data, webauthn.suffix_size);
+    write_bytes(ptr_bytes_tx, tx_id_bytes.ptr(), tx_id_size);
+    write_bytes(ptr_bytes_suffix, ptr_data_suffix, webauthn.suffix_size);
+    write_bytes(ptr_bytes_msg, ptr_data_msg, webauthn.suffix_size);
 
-  // Get prefix bytes
-  let prefix_buf = raw_slice::from_parts::<u8>(offset_data_ptr, webauthn.prefix_size);
-  let prefix_bytes = Bytes::from(prefix_buf);
-
-  // Get suffix bytes
-  let suffix_ptr = offset_data_ptr.add::<u8>(webauthn.prefix_size);
-  let suffix_buf = raw_slice::from_parts::<u8>(suffix_ptr, webauthn.suffix_size);
-  let suffix_bytes = Bytes::from(suffix_buf);
-
-  // Get Auth bytes
-  let auth_data_ptr = offset_data_ptr.add::<u8>(webauthn.prefix_size).add::<u8>(webauthn.suffix_size);
-  let auth_data_buf = raw_slice::from_parts::<u8>(auth_data_ptr, webauthn.auth_data_size);
-  let auth_data_bytes = Bytes::from(auth_data_buf);
-
-  // Create client hash
-  let mut client_data = Bytes::new();
-  client_data.append(prefix_bytes);
-  client_data.append(tx_id);
-  client_data.append(suffix_bytes);
-  let client_hash = sha256(client_data);
-
-  // Create message data
-  let mut message = Bytes::new();
-  message.append(auth_data_bytes);
-  message.append(Bytes::from(client_hash));
-
-  
-  return sha256(message);
+    let mut digest = b256::zero();
+    asm(
+        ptr_bytes: ptr_bytes,
+        ptr_hash: ptr_bytes_hash,
+        ptr_msg: ptr_bytes_msg,
+        size_auth: size_payload,
+        size_hash: webauthn.message_data_size + __size_of::<b256>(),
+        digest: digest,
+    ) {
+        s256 ptr_hash ptr_bytes size_auth;
+        s256 digest ptr_msg size_hash;
+    };
+    return digest;
 }

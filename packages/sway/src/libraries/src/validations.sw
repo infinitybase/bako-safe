@@ -6,6 +6,7 @@ use std::{
 use ::constants::{
   INVALID_ADDRESS,
   MAX_SIGNERS,
+  PREFIX_BAKO_SIG,
 };
 
 
@@ -72,4 +73,26 @@ pub fn check_signer_exists(
   }
 
   return Address::from(INVALID_ADDRESS);
+}
+
+
+/// Verify if the prefix is correct
+
+///    - process:
+///        - verify if the prefix is equal to the BAKO_SIG
+
+///     - params:
+///        - witness_ptr: the pointer to the witness
+
+///     - returns: true if the prefix is correct, false otherwise
+pub fn verify_prefix(witness_ptr: raw_ptr) -> bool {
+    asm(
+        prefix: PREFIX_BAKO_SIG,
+        witness_ptr: witness_ptr,
+        size: 4,
+        r1,
+    ) {
+        meq r1 witness_ptr prefix size;
+        r1: bool
+    }
 }
