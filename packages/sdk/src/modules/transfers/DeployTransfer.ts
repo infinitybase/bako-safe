@@ -3,17 +3,13 @@ import {
   Address,
   bn,
   calculateGasFee,
-  CoinTransactionRequestInput,
   ContractUtils,
   CreateTransactionRequest,
-  hexlify,
   OutputType,
   Provider,
   ScriptTransactionRequest,
   TransactionCreate,
-  TransactionRequest,
   transactionRequestify,
-  Wallet,
   ZeroBytes32,
 } from 'fuels';
 import {
@@ -99,14 +95,18 @@ export class DeployTransfer extends BaseTransfer<CreateTransactionRequest> {
     const createTransactionRequest = CreateTransactionRequest.from(
       bakoTransaction.txData,
     );
-    const witnesses = bakoTransaction.witnesses.map(
-      (witness) => witness.signature,
-    );
+
+    const witnesses = [
+      bakoTransaction.txData.witnesses[
+        createTransactionRequest.bytecodeWitnessIndex ?? 0
+      ].toString(),
+      ...bakoTransaction.resume.witnesses.map((witness) => witness.signature),
+    ];
 
     return new DeployTransfer({
       vault,
       name: bakoTransaction.name,
-      witnesses: [...witnesses, ...(bakoTransaction.resume?.witnesses ?? [])],
+      witnesses,
       service: new TransactionService(auth),
       transactionRequest: createTransactionRequest,
       BakoSafeTransaction: bakoTransaction,

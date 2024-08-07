@@ -6,7 +6,7 @@ import {
   IPredicateService,
 } from '../../api/predicates';
 import { IFormatTransfer, Transfer } from '../transfers';
-import { ITransactionResume, IWitnesses } from '../../api';
+import { ITransactionResume, TransactionType } from '../../api';
 import { IPagination } from '../../api/utils/pagination';
 
 export interface JsonAbiType {
@@ -88,10 +88,12 @@ export interface IBakoSafeApi extends IBakoSafeAuth {
   id?: string;
   predicateAddress?: string;
 }
+
 export interface IBakoSafeGetTransactions {
   resume: ITransactionResume;
-  witnesses: IWitnesses[];
+  type: TransactionType;
 }
+
 export interface IVault {
   getAbi: () => { [name: string]: unknown };
   getBin: () => string;
