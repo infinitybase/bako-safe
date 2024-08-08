@@ -26,7 +26,7 @@ import {
 import {
   identifyCreateVaultParams,
   makeHashPredicate,
-  makeSubscribers,
+  makeSigners,
 } from './helpers';
 import { DeployTransfer, Transfer } from '../transfers';
 import { v4 as uuidv4 } from 'uuid';
@@ -52,7 +52,7 @@ export class Vault extends Predicate<[]> implements IVault {
   public transactionRecursiveTimeout: number;
   public version?: string;
 
-  protected constructor({
+  constructor({
     configurable,
     provider,
     abi,
@@ -172,7 +172,7 @@ export class Vault extends Predicate<[]> implements IVault {
   private static makePredicate(configurable: IConfVault) {
     return {
       SIGNATURES_COUNT: configurable.SIGNATURES_COUNT,
-      SIGNERS: makeSubscribers(configurable.SIGNERS),
+      SIGNERS: makeSigners(configurable.SIGNERS),
       HASH_PREDICATE: configurable.HASH_PREDICATE ?? makeHashPredicate(),
     };
   }

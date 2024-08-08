@@ -11,16 +11,17 @@
     "test:name": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand -t"
   },
   "dependencies": {
+    "@noble/curves": "^1.5.0",
     "axios": "^1.5.1",
-    "ts-jest": "29.1.1",
-    "jest": "29.6.4",
+    "bakosafe": "workspace:*",
     "fuels": "0.92.1",
-    "uuid": "^9.0.1",
-    "bakosafe": "workspace:*"
+    "jest": "29.6.4",
+    "ts-jest": "29.1.1",
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "@types/mocha": "10.0.1",
     "@types/jest": "29.5.4",
+    "@types/mocha": "10.0.1",
     "@types/uuid": "^9.0.6",
     "dotenv": "^16.4.1"
   },

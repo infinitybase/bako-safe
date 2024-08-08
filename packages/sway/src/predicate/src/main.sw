@@ -38,18 +38,18 @@ configurable {
 }
 
 fn main() -> bool {
-    let tx_bytes = b256_to_ascii_bytes(tx_id());
-
     let mut i_witnesses = 0;
     let mut verified_signatures = Vec::with_capacity(MAX_SIGNERS);
 
     while i_witnesses < tx_witnesses_count() {
         let mut witness_ptr = __gtf::<raw_ptr>(i_witnesses, GTF_WITNESS_DATA);
-
         if (verify_prefix(witness_ptr)) {
+            // let tx_bytes = b256_to_ascii_bytes(tx_id());
+            let tx_bytes = b256_to_ascii_bytes(0x361928fde57834469c1f2d9bbf858cda73d431e6b1b04149d6836a7c2e890410);
             witness_ptr = witness_ptr.add_uint_offset(4); // skip bako prefix
+            let signature = witness_ptr.read::<SignatureType>();
             witness_ptr = witness_ptr.add_uint_offset(__size_of::<u64>()); // skip enum size
-            let pk: Address = match witness_ptr.read::<SignatureType>() {
+            let pk: Address = match signature {
                 SignatureType::WebAuthn(signature_payload) => {
                     let data_ptr = witness_ptr.add_uint_offset(__size_of::<WebAuthnHeader>());
                     let private_key = webauthn_verify(

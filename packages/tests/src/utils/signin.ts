@@ -23,11 +23,11 @@ export const signin = async (
   //   //bite: new BigNumberCoder(`u64`).encode(2).toString(),
   // });
 
-  if (!!auth && BakoSafeTransactionId) {
-    const acc = Address.fromString(accounts[account].address).toString();
-    const serviceTransactions = new TransactionService(auth);
-    return await serviceTransactions.sign(BakoSafeTransactionId, acc, tx);
-  }
+  // if (!!auth && BakoSafeTransactionId) {
+  //   const acc = Address.fromString(accounts[account].address).toString();
+  //   const serviceTransactions = new TransactionService(auth);
+  //   return await serviceTransactions.sign(BakoSafeTransactionId, acc, tx);
+  // }
 
   //return [tx, concat([new BigNumberCoder(`u64`).encode(1), tx])];
   return tx;

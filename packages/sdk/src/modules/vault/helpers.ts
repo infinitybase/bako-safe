@@ -19,9 +19,9 @@ export const defaultValues: { [name: string]: string } = {
 
 export const makeHashPredicate = () => Address.fromRandom().toB256();
 
-export const makeSubscribers = (subscribers: string[]) => {
+export const makeSigners = (signers: string[]) => {
   const array: B256Address[] = Array(10).fill(ZeroBytes32);
-  subscribers.forEach((value, index) => {
+  signers.forEach((value, index) => {
     array[index] = Address.fromString(value).toB256();
   });
   return array;

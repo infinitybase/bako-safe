@@ -1,381 +1,331 @@
-import { Provider, getRandomB256 } from 'fuels';
-import { signin, newVault, IUserAuth, authService } from './utils';
-import { IPayloadVault, Vault } from 'bakosafe';
+import {
+  Provider,
+  TransactionStatus,
+  getRandomB256,
+  bn,
+  Wallet,
+  concat,
+  hexlify,
+  Signer,
+  hashMessage,
+  bufferFromString,
+  sha256,
+  arrayify,
+} from 'fuels';
+import { secp256r1 } from '@noble/curves/p256';
+import {
+  signin,
+  newVault,
+  IUserAuth,
+  authService,
+  sendPredicateCoins,
+} from './utils';
+import { IPayloadVault, Vault, SignatureType, getSignature } from 'bakosafe';
 import { BakoSafe } from 'bakosafe';
 import {
   DEFAULT_BALANCES,
   accounts,
   DEFAULT_TRANSACTION_PAYLOAD,
+  assets,
 } from './mocks';
-import { IPredicateVersion } from 'bakosafe';
+
+import {
+  IPredicateVersion,
+  makeSigners,
+  makeHashPredicate,
+  encode,
+} from 'bakosafe';
+import { PredicateAbi__factory } from '../../sdk/src/sway/predicates/factories/PredicateAbi__factory';
+import { ScriptAbi__factory } from './types/sway/scripts';
+
+function bigintToUint8Array(bigint: BigInt) {
+  // Determine the number of bytes needed to represent the BigInt
+  const byteLength = Math.ceil(bigint.toString(2).length / 8);
+
+  // Create a Uint8Array of the appropriate length
+  const uint8Array = new Uint8Array(byteLength);
+
+  // Convert the BigInt to a hex string
+  let hex = bigint.toString(16);
+
+  // Ensure the hex string length is even
+  if (hex.length % 2 !== 0) {
+    hex = '0' + hex;
+  }
+
+  // Populate the Uint8Array with the bytes of the BigInt
+  for (let i = 0; i < byteLength; i++) {
+    uint8Array[byteLength - i - 1] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+
+  return uint8Array;
+}
+
+// export const createPredicate = async ({
+//   amount = '0.1',
+//   minSigners = 3,
+//   signers = [
+//     accounts['USER_1'].account,
+//     accounts['USER_3'].account,
+//     accounts['USER_4'].account,
+//   ],
+// }: {
+//   amount: string;
+//   minSigners: number;
+//   signers: string[];
+// }) => {
+//   const provider = await Provider.create(CHAIN_URL);
+//   const _signers: [
+//     string,
+//     string,
+//     string,
+//     string,
+//     string,
+//     string,
+//     string,
+//     string,
+//     string,
+//     string,
+//   ] = [
+//     ZeroBytes32,
+//     ZeroBytes32,
+//     ZeroBytes32,
+//     ZeroBytes32,
+//     ZeroBytes32,
+//     ZeroBytes32,
+//     ZeroBytes32,
+//     ZeroBytes32,
+//     ZeroBytes32,
+//     ZeroBytes32,
+//   ];
+
+//   for (let i = 0; i < 10; i++) {
+//     _signers[i] = signers[i] ?? ZeroBytes32;
+//   }
+
+//   const input: PredicateAbiInputs = [];
+
+//   //@ts-ignore
+//   const predicate = PredicateAbi__factory.createInstance(provider, input, {
+//     SIGNATURES_COUNT: minSigners ?? signers.length,
+//     SIGNERS: _signers,
+//     HASH_PREDICATE: Address.fromRandom().toB256(),
+//   });
+
+//   await seedAccount(predicate.address, bn.parseUnits(amount), provider);
+
+//   return predicate;
+// };
+
+// configurable,
+//     provider,
+//     abi,
+//     bytecode,
+//     name,
+//     description,
+//     BakoSafeVaultId,
+//     BakoSafeVault,
+//     BakoSafeAuth,
+//     transactionRecursiveTimeout = 1000,
+//     api,
+//     version,
+
+// global.navigator.credentials = {
+//   create: jest.fn().mockImplementation(() => {
+//     return new Promise((resolve) => {
+//       resolve({
+//         rawId: new Uint8Array(26).fill(0).buffer,
+//         response: {
+//           attestationObject: new Uint8Array(26).fill(0).buffer,
+//           clientDataJSON: new Uint8Array(26).fill(0).buffer,
+//         },
+//         getClientExtensionResults: jest.fn(),
+//         type: 'public-key',
+//       });
+//     });
+//   }),
+//   get: jest.fn().mockImplementation(() => {
+//     return new Promise((resolve) => {
+//       resolve({
+//         rawId: new Uint8Array(26).fill(0).buffer,
+//         response: {
+//           authenticatorData: new Uint8Array(26).fill(0).buffer,
+//           clientDataJSON: new Uint8Array(26).fill(0).buffer,
+//           signature: new Uint8Array(26).fill(0).buffer,
+//           userHandle: null,
+//         },
+//         getClientExtensionResults: jest.fn(),
+//         type: 'public-key',
+//       });
+//     });
+//   }),
+// };
 
 describe('[PREDICATES]', () => {
   let auth: IUserAuth;
   let provider: Provider;
-  let signers: string[];
-  let currentVersion: IPredicateVersion;
-  let oldVersions: Partial<IPredicateVersion>[];
 
   beforeAll(async () => {
-    provider = await Provider.create(BakoSafe.getProviders('CHAIN_URL'));
-    auth = await authService(
-      ['USER_1', 'USER_2', 'USER_3', 'USER_5', 'USER_4'],
-      provider.url,
-    );
-    signers = [
+    provider = await Provider.create('http://localhost:4000/v1/graphql');
+  }, 20 * 1000);
+
+  test('Sent a transaction without API calls', async () => {
+    const user = accounts['FULL'].privateKey;
+    const wallet = Wallet.fromPrivateKey(user, provider);
+    const signers = [
       accounts['USER_1'].address,
       accounts['USER_2'].address,
       accounts['USER_3'].address,
+      '0x9962da540401d92e1d06a61a0a41428f64cadf5d821b2f7f51b9c18dfdc7d2e2',
     ];
-    currentVersion = await Vault.BakoSafeGetCurrentVersion();
-    const { data: versions } = await Vault.BakoSafeGetVersions();
-    oldVersions = versions.filter(
-      (version) => version.code !== currentVersion.code,
-    );
-  }, 20 * 1000);
 
-  test('Create an inválid vault', async () => {
-    const VaultPayload: IPayloadVault = {
-      configurable: {
-        SIGNATURES_COUNT: 3,
-        SIGNERS: signers,
-        network: provider.url,
-      },
-      BakoSafeAuth: auth['USER_1'].BakoSafeAuth,
-    };
-
-    await expect(
-      Vault.create({ ...VaultPayload, version: 'fake_version' }),
-    ).rejects.toThrow('Invalid predicate version');
-
-    //Validations
-    const duplicated = [
-      ...VaultPayload.configurable.SIGNERS.slice(0, 2),
-      VaultPayload.configurable.SIGNERS[0],
-    ];
-    VaultPayload.configurable.SIGNERS = duplicated;
-    await expect(Vault.create(VaultPayload)).rejects.toThrow(
-      'SIGNERS must be unique',
-    );
-
-    VaultPayload.configurable.SIGNATURES_COUNT = 0;
-    await expect(Vault.create(VaultPayload)).rejects.toThrow(
-      'SIGNATURES_COUNT is required must be granter than zero',
-    );
-
-    VaultPayload.configurable.SIGNATURES_COUNT = 3;
-    VaultPayload.configurable.SIGNERS = [];
-    await expect(Vault.create(VaultPayload)).rejects.toThrow(
-      'SIGNERS must be greater than zero',
-    );
-
-    VaultPayload.configurable.SIGNERS = signers;
-    VaultPayload.configurable.SIGNATURES_COUNT = 5;
-    await expect(Vault.create(VaultPayload)).rejects.toThrow(
-      'Required Signers must be less than signers',
-    );
-  });
-
-  test('Created an valid vault', async () => {
-    const vault = await newVault(
-      signers,
-      provider,
-      auth['USER_1'].BakoSafeAuth,
-    );
-    expect((await vault.getBalances()).balances).toStrictEqual(
-      DEFAULT_BALANCES,
-    );
-  });
-
-  test('Create vault missing configurable params', async () => {
-    const VaultPayload: IPayloadVault = {
-      configurable: {
-        network: provider.url,
-      },
-      BakoSafeAuth: auth['USER_1'].BakoSafeAuth,
-    };
-
-    await expect(
-      Vault.create({
-        ...VaultPayload,
-        configurable: {
-          ...VaultPayload.configurable,
-          SIGNERS: signers,
-        },
-      }),
-    ).rejects.toThrow('SIGNATURES_COUNT is required');
-
-    await expect(
-      Vault.create({
-        ...VaultPayload,
-        configurable: {
-          ...VaultPayload.configurable,
-          SIGNATURES_COUNT: 3,
-        },
-      }),
-    ).rejects.toThrow('SIGNERS is required');
-  });
-
-  test('Create vault with invalid configurable params', async () => {
-    const VaultPayload: IPayloadVault = {
-      configurable: {
-        SIGNATURES_COUNT: 3,
-        SIGNERS: signers,
-        network: provider.url,
-      },
-      BakoSafeAuth: auth['USER_1'].BakoSafeAuth,
-    };
-
-    VaultPayload.configurable.HASH_PREDICATE = 'hash_predicate';
-    await expect(Vault.create(VaultPayload)).rejects.toThrow(
-      'HASH_PREDICATE must be a b256',
-    );
-
-    delete VaultPayload.configurable.HASH_PREDICATE;
-    VaultPayload.configurable.SIGNATURES_COUNT = undefined;
-    await expect(Vault.create(VaultPayload)).rejects.toThrow(
-      'SIGNATURES_COUNT must be an integer',
-    );
-
-    VaultPayload.configurable.SIGNATURES_COUNT = 0.5;
-    await expect(Vault.create(VaultPayload)).rejects.toThrow(
-      'SIGNATURES_COUNT must be an integer',
-    );
-
-    VaultPayload.configurable.SIGNATURES_COUNT = 3;
-    VaultPayload.configurable.SIGNERS = undefined;
-    await expect(Vault.create(VaultPayload)).rejects.toThrow(
-      'SIGNERS must be an array',
-    );
-
-    VaultPayload.configurable.SIGNERS = ['signer', 'signer2', 'signer3'];
-    await expect(Vault.create(VaultPayload)).rejects.toThrow(
-      'SIGNERS must be an array of b256',
-    );
-
-    VaultPayload.configurable.TEST = null;
-    await expect(Vault.create(VaultPayload)).rejects.toThrow(
-      'TEST is an invalid parameter',
-    );
-  });
-
-  test('Create vault with valid configurable params', async () => {
-    const VaultPayload: IPayloadVault = {
-      configurable: {
-        HASH_PREDICATE: getRandomB256(),
-        SIGNATURES_COUNT: 3,
-        SIGNERS: signers,
-        network: provider.url,
-      },
-      BakoSafeAuth: auth['USER_1'].BakoSafeAuth,
-    };
-
-    const vault = await Vault.create(VaultPayload);
-    expect(vault).toHaveProperty('address');
-    expect(vault).toHaveProperty('version');
-    expect(vault.version).toStrictEqual(currentVersion.code);
-
-    VaultPayload.configurable.HASH_PREDICATE = undefined;
-    const auxVault = await Vault.create(VaultPayload);
-    expect(auxVault).toHaveProperty('address');
-    expect(auxVault).toHaveProperty('version');
-    expect(auxVault.version).toStrictEqual(currentVersion.code);
-  });
-
-  test('Create vault with predicate version', async () => {
-    const vaultVersion = oldVersions[0].code;
-    const VaultPayload: IPayloadVault = {
-      configurable: {
-        SIGNATURES_COUNT: 3,
-        SIGNERS: signers,
-        network: provider.url,
-      },
-      BakoSafeAuth: auth['USER_1'].BakoSafeAuth,
-      version: vaultVersion,
-    };
-    const vault = await Vault.create(VaultPayload);
-    const auxVault = await Vault.create({
-      ...auth['USER_1'].BakoSafeAuth,
-      id: vault.BakoSafeVaultId,
+    // const tx_id =
+    //   '0000000000000000000000000000000000000000000000000000000000000001';
+    const tx_id =
+      '361928fde57834469c1f2d9bbf858cda73d431e6b1b04149d6836a7c2e890410';
+    const script = ScriptAbi__factory.createInstance(wallet);
+    const invocationScope = await script.functions.main(`0x${tx_id}`).txParams({
+      gasLimit: 10000000,
+      maxFee: 1000000,
     });
+    const txRequest = await invocationScope.getTransactionRequest();
 
-    expect(vault.version).not.toEqual(currentVersion.code);
-    expect(vault.version).toStrictEqual(auxVault.version);
-    expect(vault.version).toStrictEqual(auxVault.BakoSafeVault.version.code);
-  });
+    const priv = secp256r1.utils.randomPrivateKey();
+    const publicKey = secp256r1.getPublicKey(priv, false);
 
-  test('Create vault without predicate version', async () => {
-    const VaultPayload: IPayloadVault = {
-      configurable: {
-        SIGNATURES_COUNT: 3,
-        SIGNERS: signers,
-        network: provider.url,
-      },
-      BakoSafeAuth: auth['USER_1'].BakoSafeAuth,
+    // console.log('public address', publicKey);
+    // console.log('public address', sha256(publicKey));
+
+    const dataJSON = `{"type":"webauthn.get","challenge":"${tx_id}","origin":"http://localhost:5173","crossOrigin":false}`;
+    const mockReponseWebAuthn = {
+      authenticatorData:
+        '0x49960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97631d00000000',
+      clientDataJSON: new TextEncoder().encode(dataJSON),
     };
-    const vault = await Vault.create(VaultPayload);
 
-    expect(vault.version).toEqual(currentVersion.code);
-  });
-
-  test(
-    'Instance an old Vault by BakoSafe Predicate ID',
-    async () => {
-      const vault = await newVault(
-        signers,
-        provider,
-        auth['USER_1'].BakoSafeAuth,
-      );
-      const auxVault = await Vault.create({
-        ...auth['USER_1'].BakoSafeAuth,
-        id: vault.BakoSafeVaultId,
-      });
-      expect(auxVault.BakoSafeVaultId).toStrictEqual(vault.BakoSafeVaultId);
-      expect(auxVault.BakoSafeVault.id).toStrictEqual(vault.BakoSafeVaultId);
-      expect(auxVault.version).toStrictEqual(vault.version);
-      expect(auxVault.BakoSafeVault.version).toStrictEqual(
-        vault.BakoSafeVault.version,
-      );
-      expect(auxVault.BakoSafeVault.predicateAddress).toStrictEqual(
-        vault.BakoSafeVault.predicateAddress,
-      );
-    },
-    20 * 1000,
-  );
-
-  test(
-    'Instance an old Vault by predicate address',
-    async () => {
-      const vault = await newVault(
-        signers,
-        provider,
-        auth['USER_1'].BakoSafeAuth,
-      );
-      const auxVault = await Vault.create({
-        ...auth['USER_1'].BakoSafeAuth,
-        predicateAddress: vault.address.toString(),
-      });
-      expect(auxVault.BakoSafeVaultId).toStrictEqual(vault.BakoSafeVaultId);
-      expect(auxVault.version).toStrictEqual(vault.version);
-      expect(auxVault.BakoSafeVault.version).toStrictEqual(
-        vault.BakoSafeVault.version,
-      );
-      expect(auxVault.BakoSafeVault.predicateAddress).toStrictEqual(
-        vault.BakoSafeVault.predicateAddress,
-      );
-    },
-    10 * 1000,
-  );
-
-  test(
-    'Recover equal Vault by payload',
-    async () => {
-      const vault = await newVault(signers, provider, undefined, 2);
-
-      const vaultByPayload = await Vault.create({
-        configurable: vault.getConfigurable(),
-        version: vault.version,
-      });
-
-      const [vaultAddress, vaultByPayloadAddress] = [
-        vault.address.toString(),
-        vaultByPayload.address.toString(),
-      ];
-
-      expect(vaultAddress).toEqual(vaultByPayloadAddress);
-      expect(vaultByPayload.version).toStrictEqual(vault.version);
-      expect(await vaultByPayload.getBalances()).toStrictEqual(
-        await vault.getBalances(),
-      );
-    },
-    10 * 1000,
-  );
-
-  test(
-    'Find a transactions of predicate and return an list of Transfer instances',
-    async () => {
-      const vault = await newVault(
-        signers,
-        provider,
-        auth['USER_1'].BakoSafeAuth,
-        5,
-      );
-      const tx_1 = DEFAULT_TRANSACTION_PAYLOAD(accounts['STORE'].address);
-      const tx_2 = DEFAULT_TRANSACTION_PAYLOAD(accounts['STORE'].address);
-
-      const transaction = await vault.BakoSafeIncludeTransaction(tx_1);
-      await vault.BakoSafeIncludeTransaction(tx_2);
-
-      await signin(
-        transaction.getHashTxId(),
-        'USER_2',
-        auth['USER_2'].BakoSafeAuth,
-        transaction.BakoSafeTransactionId,
-      );
-
-      //default pagination
-      const transactions = await vault.BakoSafeGetTransactions();
-      expect(transactions.data.length).toBe(2);
-      expect(transactions.currentPage).toBe(0);
-      expect(transactions.perPage).toBe(10);
-
-      //custom pagination
-      const perPage = 1;
-      const page = 1;
-      const ptransations = await vault.BakoSafeGetTransactions({
-        perPage,
-        page,
-      });
-      expect(ptransations.currentPage).toBe(page);
-      expect(ptransations.perPage).toBe(perPage);
-      expect(ptransations.data.length).toBe(1);
-    },
-    100 * 1000,
-  );
-
-  test('Call an method of vault depends of auth without credentials', async () => {
-    const vault = await newVault(signers, provider);
-
-    await expect(vault.getConfigurable().SIGNATURES_COUNT).toBe(3);
-    await expect(vault.BakoSafeGetTransactions()).rejects.toThrow(
-      'Auth is required',
+    // '{"type":"webauthn.get","challenge":"","origin":"http://localhost:5173","crossOrigin":false}'
+    const clientHash = sha256(mockReponseWebAuthn.clientDataJSON);
+    const digest = sha256(
+      concat([mockReponseWebAuthn.authenticatorData, clientHash]),
     );
-  });
-
-  test('Find current predicate version', async () => {
-    expect(currentVersion).toHaveProperty('id');
-    expect(currentVersion).toHaveProperty('name');
-    expect(currentVersion).toHaveProperty('description');
-    expect(currentVersion).toHaveProperty('code');
-    expect(currentVersion).toHaveProperty('abi');
-    expect(currentVersion).toHaveProperty('bytes');
-    expect(currentVersion).toHaveProperty('active');
-  });
-
-  test('Find current predicate version by code', async () => {
-    const version = await Vault.BakoSafeGetVersionByCode(currentVersion.code);
-
-    expect(version).toHaveProperty('id', currentVersion.id);
-    expect(version).toHaveProperty('name', currentVersion.name);
-    expect(version).toHaveProperty('description', currentVersion.description);
-    expect(version).toHaveProperty('code', currentVersion.code);
-    expect(version).toHaveProperty('abi', currentVersion.abi);
-    expect(version).toHaveProperty('bytes', currentVersion.bytes);
-    expect(version).toHaveProperty('active', currentVersion.active);
-  });
-
-  test('List predicate versions with pagination', async () => {
-    const page = 1;
-    const perPage = 8;
-    const paginatedVersions = await Vault.BakoSafeGetVersions({
-      page,
-      perPage,
+    const [preffixText, suffixText] = dataJSON.split(tx_id);
+    const prefix = hexlify(new TextEncoder().encode(preffixText));
+    const suffix = hexlify(new TextEncoder().encode(suffixText));
+    // console.log(prefix);
+    // console.log(suffix);
+    const sig = secp256r1.sign(digest.slice(2), priv);
+    const _sig = concat([
+      bigintToUint8Array(sig.r),
+      Uint8Array.from([sig.recovery]),
+      bigintToUint8Array(sig.s),
+    ]);
+    // console.log(clientHash);
+    // console.log(digest);
+    // ...getSignature(publicKey, response.signature, digest),
+    console.dir(getSignature(publicKey.toString(), _sig, arrayify(digest)), {
+      depth: null,
     });
+    // console.log(prefix);
+    // console.log(suffix);
 
-    expect(paginatedVersions).toHaveProperty('data');
-    expect(paginatedVersions).toHaveProperty('total');
-    expect(paginatedVersions.data.length).toBeLessThanOrEqual(perPage);
-    expect(paginatedVersions).toHaveProperty('currentPage', page);
-    expect(paginatedVersions).toHaveProperty('perPage', perPage);
+    const signature = hexlify(
+      encode({
+        type: SignatureType.WebAuthn,
+        // signature: sig,
+        signature:
+          '0xdd8db7ea99c0eadfbbd0ab280c67ff0313693f8205c9af0bebfe08e64dc8b7900e23bf1da7fe5068ae9b0a2adc5af8d1695dc61aa78ae297e5021ca57b6332e6',
+        prefix,
+        suffix,
+        authData:
+          '0x49960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97631d00000000',
+      }),
+    );
+    txRequest.witnesses = [signature];
+    // console.log(hexlify(bufferFromString(txid, 'utf-8'))); // <----
+    // const hash = hashMessage(`0x${tx_id}`);
+    // console.log('hash', hash);
+    // console.log(Signer.recoverAddress(hash, _signature).toB256());
+    const txCost = await wallet.provider.getTransactionCost(txRequest);
+    await wallet.fund(txRequest, txCost);
+
+    try {
+      const callResult = await wallet.provider.dryRun(txRequest, {
+        utxoValidation: false,
+        estimateTxDependencies: false,
+      });
+
+      console.dir(callResult.receipts, { depth: null });
+    } catch (e) {
+      console.log(e.message);
+    }
+
+    // const vault = new Vault({
+    //   abi: JSON.stringify(PredicateAbi__factory.abi),
+    //   bytecode: PredicateAbi__factory.bin,
+    //   provider: provider,
+    //   configurable: {
+    //     SIGNATURES_COUNT: 2,
+    //     SIGNERS: makeSigners(signers),
+    //     HASH_PREDICATE: makeHashPredicate(),
+    //     network: provider.url,
+    //     chainId: provider.getChainId(),
+    //   },
+    // });
+
+    // await sendPredicateCoins(
+    //   vault,
+    //   bn.parseUnits('0.1'),
+    //   assets['ETH'],
+    //   wallet,
+    // );
+
+    // const tx = DEFAULT_TRANSACTION_PAYLOAD(accounts['STORE'].address);
+
+    // const tx_id =
+    //   '361928fde57834469c1f2d9bbf858cda73d431e6b1b04149d6836a7c2e890410';
+
+    // const mockReponseWebAuthn = {
+    //   authenticatorData: new Uint8Array(30).fill(1),
+    //   clientDataJSON: new TextEncoder().encode(
+    //     '{"type":"webauthn.get","challenge":"361928fde57834469c1f2d9bbf858cda73d431e6b1b04149d6836a7c2e890410","origin":"https://safe.bako.global","crossOrigin":false}',
+    //   ),
+    // };
+    // const clientHash = sha256(mockReponseWebAuthn.clientDataJSON);
+    // const digest = await sha256(
+    //   concat([mockReponseWebAuthn.authenticatorData, clientHash]),
+    // );
+    // console.log(digest);
+
+    // const transaction = await vault.BakoSafeIncludeTransaction(tx);
+    // transaction.witnesses = [
+    //   encode({
+    //     type: SignatureType.Fuel,
+    //     signature: await signin(tx_id, 'USER_2'),
+    //   }),
+    //   encode({
+    //     type: SignatureType.WebAuthn,
+    //     signature:
+    //       '0xdd8db7ea99c0eadfbbd0ab280c67ff0313693f8205c9af0bebfe08e64dc8b7900e23bf1da7fe5068ae9b0a2adc5af8d1695dc61aa78ae297e5021ca57b6332e6',
+    //     prefix:
+    //       '0x7b2274797065223a22776562617574686e2e676574222c226368616c6c656e6765223a22',
+    //     suffix:
+    //       '0x222c226f726967696e223a22687474703a2f2f6c6f63616c686f73743a35313733222c2263726f73734f726967696e223a66616c73657d',
+    //     authData:
+    //       '0x49960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97631d00000000',
+    //   }),
+    // ];
+
+    // const result = await transaction.send().then(async (tx) => {
+    //   if ('wait' in tx) {
+    //     return await tx.wait();
+    //   }
+    //   return {
+    //     status: TransactionStatus.failure,
+    //   };
+    // });
+
+    // console.log(result);
+
+    // expect(result.status).toBe(TransactionStatus.success);
   });
 });

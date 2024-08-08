@@ -52,6 +52,7 @@ pub fn get_webauthn_digest(
     write_bytes(ptr_bytes_msg, ptr_data_msg, webauthn.suffix_size);
 
     let mut digest = b256::zero();
+    let mut digest2 = b256::zero();
     asm(
         ptr_bytes: ptr_bytes,
         ptr_hash: ptr_bytes_hash,
@@ -59,9 +60,13 @@ pub fn get_webauthn_digest(
         size_auth: size_payload,
         size_hash: webauthn.message_data_size + __size_of::<b256>(),
         digest: digest,
+        digest2: digest2,
     ) {
+        s256 digest2 ptr_bytes size_auth;
         s256 ptr_hash ptr_bytes size_auth;
         s256 digest ptr_msg size_hash;
     };
+    log(digest);
+    log(digest2);
     return digest;
 }

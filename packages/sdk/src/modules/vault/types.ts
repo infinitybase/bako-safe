@@ -47,13 +47,13 @@ export enum ECreationtype {
 }
 
 export interface ICreationPayload extends IPayloadVault {
+  abi: string;
+  bytecode: string;
   provider: Provider;
   configurable: IConfVault;
   BakoSafeVaultId?: string;
   BakoSafeVault?: IPredicate;
   api?: IPredicateService;
-  abi: string;
-  bytecode: string;
 }
 
 export interface ICreationOldVault {
