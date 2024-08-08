@@ -1,177 +1,83 @@
 predicate;
 
-use std::{
-  b512::B512, 
-  bytes::Bytes,
-  constants::ZERO_B256,
-  hash::{
-    Hash, 
-    Hasher
-  },
-  tx::{
-    tx_id,
-    tx_witness_data, 
-    tx_witnesses_count,
-    GTF_WITNESS_DATA,
-    GTF_SCRIPT_WITNESS_AT_INDEX
-  },
-};
+use std::{b512::B512, constants::ZERO_B256, tx::{GTF_WITNESS_DATA, tx_id, tx_witnesses_count}};
+
 use libraries::{
-  ascii::b256_to_ascii_bytes,
-  recover_signature::{
-      Signature,
-      fuel_verify, 
-      secp256r1_verify
+    constants::{
+        BYTE_WITNESS_TYPE_FUEL,
+        BYTE_WITNESS_TYPE_WEBAUTHN,
+        EMPTY_SIGNERS,
+        INVALID_ADDRESS,
+        MAX_SIGNERS,
+    },
+    entities::{
+        SignatureType,
+        WebAuthnHeader,
+    },
+    recover_signature::{
+        fuel_verify,
+        webauthn_verify,
+    },
+    utilities::{
+        b256_to_ascii_bytes,
+    },
+    validations::{
+        check_duplicated_signers,
+        check_signer_exists,
+        verify_prefix,
     },
     webauthn_digest::{
-      WebAuthn,
-      get_webauthn_digest, 
-    } 
+        get_webauthn_digest,
+    },
 };
 
-
-// Configurables:
-
-//     Parameters:
-//         SIGNERS: list of public keys that are allowed to sign
-//             - SIGNERS different ZERO_B256 must be greater than zero
-//             - SIGNERS different ZERO_B256 must be greater than or equal to 10
-//             - SIGNERS different ZERO_B256 must be greater than or equal to SIGNATURES_COUNT
-//         SIGNATURES_COUNT: number of signatures required
-//             - SIGNATURES_COUNT different ZERO_B256
-//         HASH_PREDICATE: hash of the predicate
-//             - HASH_PREDICATE different ZERO_B256
 configurable {
-    SIGNERS: [b256; 10] = [
-        ZERO_B256,
-        ZERO_B256,
-        ZERO_B256,
-        ZERO_B256,
-        ZERO_B256,
-        ZERO_B256,
-        ZERO_B256,
-        ZERO_B256,
-        ZERO_B256,
-        ZERO_B256,
-    ],
+    SIGNERS: [b256; 10] = EMPTY_SIGNERS,
     SIGNATURES_COUNT: u64 = 0,
-    HASH_PREDICATE: b256 = ZERO_B256
-}
-const MAX_SIGNERS: u64 = 10;
-
-
-// Validate signature:
-
-//     params: 
-//         - public_key: public key to validate
-//         - verified_signatures: list of verified signatures
-//     process:
-//         - check if the public key is a signer
-//         - check if the public key is already verified
-//     return:
-//         - 1 if the public key is a signer and not already verified
-//         - 0 if the public key is not a signer or already verified
-fn verify_signer_exists(public_key: Address, verified_signatures: Vec::<Address>) -> u64 {
-    let mut i_signer = 0;
-    while i_signer <  MAX_SIGNERS {
-        if (public_key == Address::from(SIGNERS[i_signer])) {
-            let mut i_verified = 0;
-            while i_verified < verified_signatures.len() {
-                // if (verified_signatures.get(i_verified).unwrap() == public_key) {
-                //     return 0;
-                // }
-                i_verified += 1;
-            }
-            return 1;
-        }
-        i_signer += 1;
-    }
-    return 0;
+    HASH_PREDICATE: b256 = ZERO_B256,
 }
 
-// Validate signature:
-
-//     process:
-//         - get the transaction hash
-//         - get the number of witnesses
-//         - get the witnesses
-//         - recover the public key from the signature
-//         - check if the public key is a signer
-//         - check if the public key is already verified
-//         - increase the number of valid signatures
-//         - check if the number of valid signatures is greater than the required
-//     return:
-//         - 1 if the minimum number of signatures is reached
-//         - 0 if the minimum number of signatures is not reached 
 fn main() -> bool {
-  let tx_bytes = b256_to_ascii_bytes(tx_id());
+    let tx_bytes = b256_to_ascii_bytes(tx_id());
 
-  //specific to webauthn
-  let tx_webauthn = Bytes::from(tx_bytes);
-  //specific to fuel
-  let mut hasher = Hasher::new();
-  tx_bytes.hash(hasher);
-  let tx_fuel = hasher.sha256();
+    let mut i_witnesses = 0;
+    let mut verified_signatures = Vec::with_capacity(MAX_SIGNERS);
 
+    while i_witnesses < tx_witnesses_count() {
+        let mut witness_ptr = __gtf::<raw_ptr>(i_witnesses, GTF_WITNESS_DATA);
 
-  let mut i_witnesses = 0;
-  let mut valid_signatures:u64 = 0;
-  let witness_count = tx_witnesses_count();
-  let mut verified_signatures = Vec::with_capacity(MAX_SIGNERS);
-  
+        if (verify_prefix(witness_ptr)) {
+            witness_ptr = witness_ptr.add_uint_offset(4); // skip bako prefix
+            witness_ptr = witness_ptr.add_uint_offset(__size_of::<u64>()); // skip enum size
+            let pk: Address = match witness_ptr.read::<SignatureType>() {
+                SignatureType::WebAuthn(signature_payload) => {
+                    let data_ptr = witness_ptr.add_uint_offset(__size_of::<WebAuthnHeader>());
+                    let private_key = webauthn_verify(
+                        get_webauthn_digest(signature_payload, data_ptr, tx_bytes),
+                        signature_payload,
+                    );
+                    private_key
+                },
+                SignatureType::Fuel(signature) => {
+                    // TODO: talk with Sway team to see why the value is not correctly parsed it looks to be skiping 24 bytes
+                    // this is why we need to use the pointer to read the B512 value, this problem dosen't happen on the webauth
+                    let signature = witness_ptr.read::<B512>();
+                    fuel_verify(signature, tx_bytes)
+                },
+                _ => Address::from(INVALID_ADDRESS),
+            };
 
+            let is_valid_signer = check_signer_exists(pk, SIGNERS);
+            check_duplicated_signers(is_valid_signer, verified_signatures);
+        }
 
-  // redundant check, but it is necessary to avoid compiler errors
-  if(HASH_PREDICATE != HASH_PREDICATE) {
-      return false;
-  }
-
-
-  while i_witnesses < witness_count {
-    //let sig_ptr:raw_ptr = __gtf::<raw_ptr>(i_witnesses, GTF_WITNESS_DATA);
-    let mut _public_key: Address = Address::from(ZERO_B256);
-    let mut _is_valid_signature: u64 = 0;
-
-    match tx_witness_data::<Signature>(i_witnesses) {
-        // Webauthn signature
-          Signature::webauth(webauthn) => {
-              let sig_ptr:raw_ptr = __gtf::<raw_ptr>(i_witnesses, GTF_WITNESS_DATA);
-              let digest = get_webauthn_digest(webauthn, sig_ptr, tx_webauthn);
-              _public_key = secp256r1_verify(webauthn.signature, digest);
-              _is_valid_signature = verify_signer_exists(_public_key, verified_signatures);
-          }
-        // Fuel signature
-          _ => {
-            let signature = tx_witness_data::<B512>(i_witnesses);
-            _public_key = fuel_verify(signature, tx_fuel);
-            _is_valid_signature = verify_signer_exists(_public_key, verified_signatures);
-          }
-    };
-
-    if (_is_valid_signature == 1) {
-      verified_signatures.push(_public_key);
-      valid_signatures += 1;
+        i_witnesses += 1;
     }
 
+    // redundant check, but it is necessary to avoid compiler errors
+    if (HASH_PREDICATE != HASH_PREDICATE) {
+        return false;
+    }
 
-    i_witnesses += 1;
-  }
-
-
-  if(SIGNATURES_COUNT != SIGNATURES_COUNT) {
-    return false;
-  }
-
-    if(SIGNERS[0] != SIGNERS[0]) {
-    return false;
-  }
-
-  return valid_signatures >= SIGNATURES_COUNT;
-  //return true;
+    return verified_signatures.len() >= SIGNATURES_COUNT;
 }
-
-/*
-  todo:
-      - add the ability to add more signers
-      - add the ability to add more signature types from other chains (e.g. evm, solana, etc.)
-*/

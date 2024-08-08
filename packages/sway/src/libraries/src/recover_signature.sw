@@ -4,22 +4,28 @@ use std::{
   b512::B512,
   hash::*,
   bytes::Bytes,
-  constants::ZERO_B256,  
   result::Result,
   ecr::{
     ec_recover_address, 
     ec_recover_address_r1
   },
+  tx::{
+    GTF_WITNESS_DATA,
+    tx_witness_data,
+  },
+};
+use ::utilities::{
+  hash_tx_id,
+};
+use ::entities::{
+  WebAuthnHeader
 };
 use ::webauthn_digest::{
-  WebAuthn,
+  get_webauthn_digest,
 };
-
-pub const INVALID_ADDRESS = 0x0000000000000000000000000000000000000000000000000000000000000001;
-
-pub enum Signature {
-  webauth: WebAuthn,
-}
+use ::constants::{
+  INVALID_ADDRESS,
+};
 
 /// Verify a signature using the FUEL curve [Secp256k1]
 
@@ -28,12 +34,13 @@ pub enum Signature {
 ///         - tx_hash: the hash of the transaction
 
 ///     - returns: the address of the signer
-pub fn fuel_verify(signature: B512, tx_bytes: b256) -> Address {
-  if let Result::Ok(pub_key_sig) = ec_recover_address(signature, tx_bytes) {
-      return pub_key_sig;
+pub fn fuel_verify(signature: B512, tx_bytes: Bytes) -> Address {
+  let tx_fuel = hash_tx_id(tx_bytes);
+  match ec_recover_address(signature, tx_fuel) {
+    Result::Ok(pub_key_sig) => pub_key_sig,
+    _ => Address::from(INVALID_ADDRESS),
   }
 
-  return Address::from(INVALID_ADDRESS);
 }
 
 /// Verify a signature using the secp256r1 curve [Secp256r1]
@@ -43,10 +50,9 @@ pub fn fuel_verify(signature: B512, tx_bytes: b256) -> Address {
 ///         - digest: the digest of the message
 
 ///     - returns: the address of the signer
-pub fn secp256r1_verify(signature: B512, digest:b256 ) -> Address {
-  if let Result::Ok(pub_key_sig) = ec_recover_address_r1(signature, digest) {
-      return pub_key_sig;
-  }
-
-  return Address::from(INVALID_ADDRESS);
+pub fn webauthn_verify(digest: b256, webauthn: WebAuthnHeader) -> Address {
+    match ec_recover_address_r1(webauthn.signature, digest) {
+        Result::Ok(address) => address,
+        _ => Address::from(INVALID_ADDRESS),
+    }
 }

@@ -1,8 +1,11 @@
 {
-    "editor.defaultFormatter": "esbenp.prettier-vscode",
-    "editor.bracketPairColorization.enabled": true,
-    "editor.formatOnSave": true,
-    "editor.formatOnPaste": true,
-    "editor.wordWrap": "on",
-    "git.ignoreLimitWarning": true
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.bracketPairColorization.enabled": true,
+  "editor.formatOnSave": true,
+  "editor.formatOnPaste": true,
+  "editor.wordWrap": "on",
+  "git.ignoreLimitWarning": true,
+  "[sway]": {
+    "editor.defaultFormatter": "FuelLabs.sway-vscode-plugin"
+  }
 }

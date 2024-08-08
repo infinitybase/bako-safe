@@ -69,6 +69,7 @@ export class Auth {
     return this.client.getWorkspaces();
   }
 
+  // TODO: remove this as it's used only for tests
   static async signerByPk(pk: string, code: string) {
     const signer = Wallet.fromPrivateKey(
       pk,

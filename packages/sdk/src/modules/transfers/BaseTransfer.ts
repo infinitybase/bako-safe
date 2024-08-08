@@ -6,7 +6,7 @@ import {
   TransactionStatus,
 } from '../../api';
 import { Vault } from '../vault/Vault';
-import { delay } from '../../../test/utils';
+import { delay } from '../../utils';
 
 export interface BaseTransferLike<T extends TransactionRequest> {
   name: string;

@@ -18,18 +18,19 @@
   "author": "",
   "license": "Apache-2.0",
   "scripts": {
-    "prebuild": "yarn fuels build",
-    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand --silent"
+    "prebuild": "fuels build",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand"
   },
   "devDependencies": {
     "@types/jest": "29.5.4",
     "@types/mocha": "10.0.1",
-    "dotenv": "^16.4.1",
+    "@types/node": "^16.18.104",
+    "dotenv": "^16.4.5",
+    "elliptic": "^6.5.6",
     "jest": "29.6.4",
     "ts-jest": "29.1.1"
   },
   "dependencies": {
-    "fuels": "0.92.1",
-    "bakosafe-test-utils": "workspace:*"
+    "fuels": "0.92.1"
   }
 }

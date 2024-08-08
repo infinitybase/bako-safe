@@ -3,6 +3,7 @@ export const defaultConfig = {
   SERVER_URL: 'http://localhost:3333/',
   CLIENT_URL: 'https://safe.bako.global',
   ENCODER: 'Fuel',
+  SIGNATURE_PREFIX: '0x42414b4f',
 };
 
 export const gasConfig = {

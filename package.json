@@ -14,8 +14,7 @@
   ],
   "scripts": {
     "build": "turbo run prebuild && turbo run build",
-    "test": "turbo run test",
-    "chain:start": "make -C ./docker/chain up"
+    "test": "turbo run test"
   },
   "devDependencies": {
     "turbo": "^1.10.0"

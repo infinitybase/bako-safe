@@ -5,9 +5,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export default createConfig({
-  predicates: ['./src/predicate'],
-  forcBuildFlags: ['--release'],
+  contracts: ['./src/sway/contract'],
+  scripts: ['./src/sway/scripts'],
   providerUrl: process.env.PROVIDER_URL,
   privateKey: process.env.PRIVATE_KEY,
-  output: '../sdk/src/sway',
+  output: './src/types/sway',
 });
